@@ -1,0 +1,7 @@
+apiVersion: pyvo.io/v1
+kind: AgeSecret
+metadata:
+  name: my-secret
+spec:
+  secretKey: numbers
+  secret: "Hello world"

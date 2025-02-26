@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: application
+  name: application
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: application
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: application
+    spec:
+      volumes:
+        - name: secret
+          secret:
+            secretName: numbers
+      containers:
+      - image: docker.io/library/app:v1.0.1
+        imagePullPolicy: IfNotPresent
+        name: application
+        resources: {}
+        ports:
+          - containerPort: 5000
+            protocol: TCP
+            name: web
+        volumeMounts:
+          - mountPath: "/app/secret.txt"
+            name: secret
+            readOnly: true
+            subPath: numbers
+status: {}
+
+
+

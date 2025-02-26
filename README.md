@@ -257,7 +257,7 @@ spec:
   secret: "Hello world!"
 ```
 
-And create a namespace-secret that will contain decrypting secret
+Save it to `app/manifests/age.secret.yaml` create a `namespace-secret` that will contain decrypting secret.
 
 > [!TIP]
 > This secret can be auto generated or manually applied to the cluster.
@@ -272,27 +272,179 @@ stringData:
   secretKey: "AGE-SECRET-KEY-1WU6V2ZS76MU79G2427F7HD4HPXYQ48HTZG95N3P4XR22A7C4SH9SA6TMFY"
 ```
 
-3. Let's encrypt with python
-
-This simple script creates our `Kind` it's a simple utility. First, create a set of
-key pairs with age:
+And save it to app/manifests as `namespace-secret.yaml` and apply.
 
 ```shell
-age-keygen -o local.txt
-age-keygen -o kubernetes.txt
+kubectl apply -n development -f manifests/namespace-secret.yaml
 ```
 
-5. Change our Operator
+3. Let's encrypt/decrypt with python + age
+
+First create a set of key pairs with age:
+
+```shell
+age-keygen -o local.txt # This will be used by developers
+age-keygen -o kubernetes.txt # Just for kubernetes operator
+```
+
+Test age encryption and decryption, use `kubernetes.txt` and `local.txt` as recepients.
+
+```shell
+age -o secret.enc.txt \
+  -r age1rmupn8vj5ykfp33w9ln8dp58u899j3n6wj527yueul2twrl55s7qy2m26t \
+  -r age1eec0y4vnmspzmx8ll54p5staszme0xettz7xyclzn0pd55y8fyvqs87u3q \
+  secret.txt
+```
+
+Next we encrypt our secret:
+
+```shell
+age --decrypt -i local.txt -o secret.dec.txt secret.enc.txt
+```
+
+> [!TIP]
+> Now, checkout age-secret utility that does the same thing but it uses our yaml!
+
+
+5. Deploy our secret
+
+Encrypt secret in yaml using our tool.
+
+```
+uv --directory age-secret run age.py encrypt --file ../app/manifests/age.secret.yaml \
+  -r "age1eec0y4vnmspzmx8ll54p5staszme0xettz7xyclzn0pd55y8fyvqs87u3q" > ../app/manifests/age.secret.enc.yaml
+```
+
+> [!TIP]
+> You can configure `.gitignore` to ignore `*.secret.yaml`
+
+
+Redirect output to `app/manifests/age-secret.enc.yaml` followed by `kubectl apply -f app/manifests/age-secret.enc.yaml`.
+
+> [!INFO]
+> Plot twist: Nothing will happen, we need to change the code for operator first.
+
+Use `k9s` to delete created resource.
+
+## Support Age secret in Operator
+
+
+![alt text](image-1.png)
+
+Let's start with **create**, it will listen on `event` that agesecret resource was created,
+then it will read that resource and create a native Kubernetes secret out of it.
+
+Before continuing, we need to install `kubernetes` library to intereact with Kubernetes API.
+
+```shell
+uv add kubernetes
+```
+
+And import it:
 
 ```python3
 import kopf
 import logging
-
-@kopf.on.update('agesecrets')
-def my_handler(spec, old, new, diff, **_):
-    logging.info(f"A handler is called with body: {spec}")
+import kubernetes
 ```
+
+```python3
+@kopf.on.create('pyvo.io', 'v1', 'agesecrets')
+def on_create(spec, namespace, **kwargs):
+    secret_name = spec.get('secretName')
+    secret_key = spec.get('secretKey')
+    secret_value = spec.get('secret')
+    # Here we need to add custom logic for decrypting that secret
+    # After that new secret in Kubernetes can be created
+    # todo: Implement decrypting logic
+    # todo: Implement creation of native Kubernetes secret
+```
+
+<details>
+  <summary>Spoiler !</summary>
+
+  ```python3
+    import base64
+    from kubernetes import client
+
+    def create_k8s_secret(name, namespace, key, value):
+      api = client.CoreV1Api()
+      secret = client.V1Secret(
+          metadata=client.V1ObjectMeta(name=name),
+          data={key: base64.b64encode(value.encode()).decode('ascii')},
+          # https://kubernetes.io/docs/concepts/configuration/secret/#secret-types
+          type="Opaque"
+      )
+      api.create_namespaced_secret(namespace, body=secret)
+  ```
+    Usage
+
+  ```python3
+    create_k8s_secret(secret_name, namespace, secret_key, secret_value)
+  ```
+
+</details>
+
+Now test it
 
 ```shell
 uv run kopf run operator.py -n development
 ```
+
+Apply secret and observe
+
+```shell
+kubectl apply -n development -f manifests/age.secret.yaml
+```
+
+Follow it with delete event, where native `Secret` kind is removed when `AgeSecret` is deleted.
+
+<details>
+  <summary>Spoiler !</summary>
+
+  ```python3
+  def delete_k8s_secret(name, namespace):
+      api = kubernetes.client.CoreV1Api()
+      api.delete_namespaced_secret(name, namespace)
+      kopf.info(f"Secret {name} deleted successfully from {namespace}.")
+
+  @kopf.on.delete('pyvo.io', 'v1', 'agesecrets')
+  def on_delete(spec, namespace, **kwargs):
+      secret_name = spec.get('secretName')
+      delete_k8s_secret(secret_name, namespace)
+  ```
+
+</details>
+
+Updating secret is quite similar, instead we now focus on decrypting secret.
+
+```shell
+uv add pyrage
+```
+
+Implement a logic of reading a Kubernetes Secret.
+
+
+<details>
+  <summary>Spoiler !</summary>
+
+  ```python3
+  from pyrage import decrypt, x25519
+  def decrypt_secret(ageSecretRef, namespace, secret_value):
+      data = read_age_secret(ageSecretRef, namespace)
+      decrypting_secret = None
+      if "secretKey" in data:
+          decrypting_secret = x25519.Identity.from_str(data["secretKey"])
+      else:
+          pass
+
+      if "ENC[" in secret_value:
+          secret_value = secret_value[4:-1]
+      else:
+          pass
+
+      encrypted_secret = base64.b64decode(secret_value)
+      decrypted = decrypt(encrypted_secret, [decrypting_secret])
+      return decrypted.decode()
+  ```
+</details>

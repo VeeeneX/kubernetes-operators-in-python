@@ -1,0 +1,10 @@
+apiVersion: pyvo.io/v1
+kind: AgeSecret
+metadata:
+  name: my-secret
+spec:
+  ageSecretRef: "age-app-secret"
+  secretName: "numbers"
+  secretKey: "fileName.txt"
+  secret: "base64 encoded encrypted secret"
+
