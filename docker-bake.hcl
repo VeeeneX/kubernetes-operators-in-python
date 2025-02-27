@@ -6,7 +6,6 @@ variable "TAG" {
     default = "latest"
 }
 
-
 target "app" {
     context = "./app"
     dockerfile = "Dockerfile"

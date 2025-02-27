@@ -324,7 +324,7 @@ Use `k9s` to delete created resource with shortcut `ctrl-d`.
 
 ![alt text](operator.png)
 
-Create a `namespace-secret` that will contain decrypting secret.
+Create a `namespace-secret` that will contain decrypting secret from `kubernetes.txt`.
 
 > [!TIP]
 > This secret can be auto generated or manually applied to the cluster.
