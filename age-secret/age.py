@@ -11,12 +11,12 @@ from pyrage import encrypt, decrypt, x25519
 import yaml
 import base64
 
-def encrypt_secret(file_path, recipient):
+def encrypt_secret(file_path, recipients):
     with open(file_path, "r") as f:
         data = yaml.safe_load(f)
-    public_key = x25519.Recipient.from_str(recipient)
+    public_keys = [x25519.Recipient.from_str(recipient) for recipient in recipients]
 
-    encrypted = encrypt(str.encode(data["spec"]["secret"]), [public_key])
+    encrypted = encrypt(str.encode(data["spec"]["secret"]), public_keys)
     encoded_secret = base64.b64encode(encrypted).decode()
 
     data["spec"]["secret"] = f"ENC[{encoded_secret}]"
@@ -49,7 +49,7 @@ def main():
 
     encrypt_parser = subparsers.add_parser("encrypt", help="Encrypt a secret and output it as a Kubernetes manifest.")
     encrypt_parser.add_argument("--file", required=True, help="File containing the secret to encrypt.")
-    encrypt_parser.add_argument("-r", required=True, help="Recipient public key.")
+    encrypt_parser.add_argument("-r", required=True, action="append", help="Recipient public keys.")
 
     decrypt_parser = subparsers.add_parser("decrypt", help="Decrypt a secret from a Kubernetes manifest.")
     decrypt_parser.add_argument("--file", required=True, help="Kubernetes manifest file.")
