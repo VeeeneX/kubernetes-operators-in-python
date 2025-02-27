@@ -24,9 +24,6 @@ spec:
             spec:
               type: object
               properties:
-                ageSecretRef:
-                  description: "Kubernetes secret containg secretKey: AGE-SECRET-KEY-xxx"
-                  type: string
                 secretName:
                   description: "Name of newly generated secret"
                   type: string
